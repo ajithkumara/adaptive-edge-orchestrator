@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "fields": [
+    {"name": "sensor_id", "type": "string"},
+    {"name": "timestamp", "type": "long"},
+    {"name": "value", "type": "float"}
+  ]
+}

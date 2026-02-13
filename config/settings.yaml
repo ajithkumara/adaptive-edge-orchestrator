@@ -1,0 +1,11 @@
+system:
+  name: adaptive-orchestrator
+  version: 1.0.0
+
+edge:
+  enabled: true
+  threshold: 0.8
+
+cloud:
+  enabled: true
+  endpoint: http://cloud-api-service

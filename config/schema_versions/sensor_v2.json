@@ -1,0 +1,21 @@
+{
+    "version": 2,
+    "fields": [
+        {
+            "name": "sensor_id",
+            "type": "string"
+        },
+        {
+            "name": "timestamp",
+            "type": "long"
+        },
+        {
+            "name": "value",
+            "type": "float"
+        },
+        {
+            "name": "metadata",
+            "type": "map"
+        }
+    ]
+}

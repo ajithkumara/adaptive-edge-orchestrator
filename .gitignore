@@ -1,0 +1,47 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.log
+.pytest_cache/
+.coverage
+.cache/
+nosetests.xml
+coverage.xml
+*.orig
+*.rej
+
+# Virtual environment
+.venv/
+venv/
+ENV/
+env/
+.env
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# ML artifacts
+*.pkl
+*.model
+
+# Spark
+spark-warehouse/
+
+# Notebooks
+.ipynb_checkpoints/
+
+# Docker
+*.tar
+
+# Local Data
+synthetic_data/*.csv
+synthetic_data/*.parquet
+
+# Application Logs
+logs/

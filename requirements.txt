@@ -1,0 +1,10 @@
+pandas
+numpy
+PyYAML
+kafka-python
+scikit-learn
+pyspark
+shap
+prometheus_client
+matplotlib
+jupyter

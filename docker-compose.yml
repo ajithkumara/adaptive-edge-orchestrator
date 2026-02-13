@@ -1,0 +1,17 @@
+version: '3.8'
+
+services:
+  edge:
+    build: ./edge
+    environment:
+      - MODE=EDGE
+
+  cloud:
+    build: ./cloud
+    environment:
+      - MODE=CLOUD
+
+  orchestrator:
+    build: ./orchestrator
+    environment:
+      - MODE=ORCHESTRATOR

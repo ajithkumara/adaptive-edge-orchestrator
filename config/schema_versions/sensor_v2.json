@@ -1,21 +1,464 @@
 {
-    "version": 2,
-    "fields": [
-        {
-            "name": "sensor_id",
-            "type": "string"
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://adaptive-orchestrator.io/schemas/sensor/v2",
+    "title": "SensorReadingV2",
+    "description": "Raw sensor telemetry from edge devices. v2 introduces three categories of change from v1: (1) breaking wire-format changes (timestamp as integer epoch ms, open metrics object, split tenant/factory/sensor identifiers), (2) additive fields required for production operations (sequence_number, ingested_at_ms, signal quality, calibration context), (3) optional batch envelope for high-frequency sensors. Consumers MUST check schema_version before parsing. v1 records can be migrated to v2 using the migration mapping in x-migration.",
+    "x-version": "2.0.0",
+    "x-introduced": "2025-06-01",
+    "x-deprecated": false,
+    "x-successor": null,
+    "x-predecessor": "https://adaptive-orchestrator.io/schemas/sensor/v1",
+    "x-breaking-changes": [
+        "timestamp changed from ISO 8601 string to integer epoch milliseconds (timestamp_ms)",
+        "metrics changed from fixed object {temperature, pressure, vibration} to open dynamic object",
+        "sensor_id is now scoped within factory — tenant_id and factory_id are separate required fields",
+        "additionalProperties at root was false in v1; extensions object now provides the extension point"
+    ],
+    "x-migration": {
+        "from": "https://adaptive-orchestrator.io/schemas/sensor/v1",
+        "field_mappings": [
+            {
+                "v1": "timestamp",
+                "v2": "timestamp_iso",
+                "transform": "copy"
+            },
+            {
+                "v1": "timestamp",
+                "v2": "timestamp_ms",
+                "transform": "iso_to_epoch_ms"
+            },
+            {
+                "v1": "sensor_id",
+                "v2": "sensor_id",
+                "transform": "copy"
+            },
+            {
+                "v1": "metadata.location",
+                "v2": "metadata.location",
+                "transform": "copy"
+            },
+            {
+                "v1": "metadata.firmware_version",
+                "v2": "metadata.firmware_version",
+                "transform": "copy"
+            },
+            {
+                "v1": "metrics.temperature",
+                "v2": "metrics.temperature",
+                "transform": "scalar_to_rich_metric"
+            },
+            {
+                "v1": "metrics.pressure",
+                "v2": "metrics.pressure",
+                "transform": "scalar_to_rich_metric"
+            },
+            {
+                "v1": "metrics.vibration",
+                "v2": "metrics.vibration",
+                "transform": "scalar_to_rich_metric"
+            }
+        ],
+        "dropped_v1_fields": [
+            "anomaly_score — moved to inference_result_v1",
+            "connectivity_status — moved to system_event_v1",
+            "edge_mode — moved to system_event_v1"
+        ],
+        "notes": "v1 records missing tenant_id and factory_id must be enriched from device registry during migration. ingested_at_ms can be set to timestamp_ms for historical records where ingestion time is unknown."
+    },
+    "type": "object",
+    "properties": {
+        "schema_version": {
+            "type": "string",
+            "const": "2.0",
+            "description": "Schema version. Consumers must check this before parsing — v1 and v2 have incompatible field structures."
         },
-        {
-            "name": "timestamp",
-            "type": "long"
+        "event_type": {
+            "type": "string",
+            "const": "sensor_reading"
         },
-        {
-            "name": "value",
-            "type": "float"
+        "tenant_id": {
+            "type": "string",
+            "pattern": "^[a-z0-9]{3,16}$",
+            "description": "Tenant identifier. Top-level partition key for all multi-tenant data isolation."
         },
-        {
-            "name": "metadata",
-            "type": "map"
+        "factory_id": {
+            "type": "string",
+            "pattern": "^[a-z0-9_-]{3,32}$",
+            "description": "Factory identifier within tenant scope. Second-level partition key."
+        },
+        "sensor_id": {
+            "type": "string",
+            "pattern": "^[a-z0-9_-]{1,64}$",
+            "description": "Sensor identifier, unique within factory scope. Does NOT include tenant or factory — those are separate fields. Join with factory_id for global uniqueness."
+        },
+        "device_id": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9_:-]{1,64}$",
+            "description": "Hardware identifier of the edge compute node that emitted this reading (e.g. MAC address, serial number). A single device may host multiple sensors. Used for device-level health correlation."
+        },
+        "timestamp_ms": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Time the sensor measurement was taken, Unix epoch milliseconds UTC. This is the event time for all stream processing and time-series queries. BREAKING CHANGE from v1: was an ISO 8601 string named 'timestamp'."
+        },
+        "timestamp_iso": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?(Z|[+-]\\d{2}:\\d{2})$",
+            "description": "Human-readable ISO 8601 representation of timestamp_ms. Informational only — use timestamp_ms for all computation. Both fields must represent the same instant."
+        },
+        "ingested_at_ms": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Time this event was received and validated by the edge ingestion layer, epoch ms UTC. Will differ from timestamp_ms during periods of local buffering. The difference (ingested_at_ms - timestamp_ms) is the ingestion lag metric."
+        },
+        "sequence_number": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Monotonically increasing counter per sensor_id, reset only on sensor firmware restart. Consumers can detect gaps (missed readings) by checking for non-consecutive values. Gaps during connectivity outages are expected and normal — gaps during online operation indicate sensor or ingestion failures."
+        },
+        "metrics": {
+            "type": "object",
+            "minProperties": 1,
+            "description": "Physical sensor measurements. Any metric name is valid — schema does not prescribe metric names. BREAKING CHANGE from v1: was a fixed closed object requiring exactly {temperature, pressure, vibration}. Each metric value can be a simple scalar or a rich object with unit, quality, and provenance.",
+            "additionalProperties": {
+                "oneOf": [
+                    {
+                        "type": "number",
+                        "description": "Simple scalar value. Unit and quality are inferred from factory configuration in this case. Acceptable for internal use but rich form is preferred for any data leaving the factory."
+                    },
+                    {
+                        "type": "object",
+                        "description": "Rich metric value with full provenance",
+                        "properties": {
+                            "value": {
+                                "type": "number",
+                                "description": "The measured value"
+                            },
+                            "unit": {
+                                "type": "string",
+                                "minLength": 1,
+                                "examples": [
+                                    "celsius",
+                                    "bar",
+                                    "mm/s",
+                                    "rpm",
+                                    "A",
+                                    "V",
+                                    "kPa",
+                                    "Hz",
+                                    "pct"
+                                ],
+                                "description": "Unit of measurement as a lowercase string. Use SI units where possible."
+                            },
+                            "quality": {
+                                "type": "string",
+                                "enum": [
+                                    "good",
+                                    "uncertain",
+                                    "bad",
+                                    "missing"
+                                ],
+                                "description": "OPC-UA-inspired signal quality code. 'good' = sensor operating normally. 'uncertain' = sensor operating but reading may be unreliable (e.g. recent calibration, sensor warm-up). 'bad' = sensor fault detected. 'missing' = expected reading not received within timeout. Downstream models must handle non-good quality gracefully."
+                            },
+                            "quality_detail": {
+                                "type": "string",
+                                "description": "Optional machine-readable reason code for non-good quality. Examples: 'SENSOR_SATURATED', 'COMM_TIMEOUT', 'OUT_OF_RANGE', 'MANUAL_OVERRIDE'."
+                            },
+                            "is_derived": {
+                                "type": "boolean",
+                                "default": false,
+                                "description": "True if this value was computed from other sensor readings (e.g. delta, rolling average, calculated from formula) rather than directly measured. Models must not treat derived values as independent observations — this causes spurious feature correlations."
+                            },
+                            "derived_from": {
+                                "type": "array",
+                                "items": {
+                                    "type": "string"
+                                },
+                                "description": "If is_derived is true, list the source metric names this value was computed from. Empty if is_derived is false."
+                            },
+                            "range": {
+                                "type": "object",
+                                "description": "Expected operating range for this metric on this sensor. Values outside this range should have quality set to 'uncertain' or 'bad'. Stored here for self-describing event payloads — also available in factory configuration.",
+                                "properties": {
+                                    "min": {
+                                        "type": "number"
+                                    },
+                                    "max": {
+                                        "type": "number"
+                                    }
+                                },
+                                "required": [
+                                    "min",
+                                    "max"
+                                ],
+                                "additionalProperties": false
+                            }
+                        },
+                        "required": [
+                            "value",
+                            "unit",
+                            "quality"
+                        ],
+                        "additionalProperties": false
+                    }
+                ]
+            }
+        },
+        "calibration": {
+            "type": "object",
+            "description": "Calibration status of the sensor at the time of this reading. Sensor drift post-calibration is a primary source of false positives in anomaly detection. Including calibration context allows models to account for expected drift trajectories.",
+            "properties": {
+                "last_calibrated_ms": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "description": "Timestamp of the most recent sensor calibration, epoch ms UTC"
+                },
+                "calibration_due_ms": {
+                    "type": [
+                        "integer",
+                        "null"
+                    ],
+                    "minimum": 0,
+                    "description": "Scheduled next calibration timestamp. Null if no calibration schedule is defined for this sensor."
+                },
+                "days_since_calibration": {
+                    "type": "number",
+                    "minimum": 0,
+                    "description": "Computed field: (timestamp_ms - last_calibrated_ms) / 86400000. Denormalised here for convenience in ML feature pipelines."
+                },
+                "calibration_overdue": {
+                    "type": "boolean",
+                    "description": "True if timestamp_ms > calibration_due_ms. Readings from overdue sensors should be treated with reduced confidence."
+                }
+            },
+            "required": [
+                "last_calibrated_ms",
+                "days_since_calibration",
+                "calibration_overdue"
+            ],
+            "additionalProperties": false
+        },
+        "sampling": {
+            "type": "object",
+            "description": "Describes how this reading was sampled. Required for correct interpretation of high-frequency or aggregated readings.",
+            "properties": {
+                "mode": {
+                    "type": "string",
+                    "enum": [
+                        "instantaneous",
+                        "average",
+                        "min",
+                        "max",
+                        "rms"
+                    ],
+                    "description": "How the metric values were captured. 'instantaneous' is a single point-in-time sample. Others are aggregations over the sampling_window_ms."
+                },
+                "sampling_rate_hz": {
+                    "type": "number",
+                    "minimum": 0,
+                    "description": "The sensor's native sampling rate in Hz. For a 100Hz accelerometer emitting one reading per second, this is 100 and mode would be 'rms' or 'average'."
+                },
+                "sampling_window_ms": {
+                    "type": [
+                        "integer",
+                        "null"
+                    ],
+                    "minimum": 0,
+                    "description": "If mode is not 'instantaneous', the time window over which the aggregation was computed. Null for instantaneous samples."
+                }
+            },
+            "required": [
+                "mode",
+                "sampling_rate_hz"
+            ],
+            "additionalProperties": false
+        },
+        "batch": {
+            "type": "object",
+            "description": "Optional. Present only when this event is part of a batch submission. Edge devices under resource pressure or operating in buffered replay mode may submit multiple readings in a single network call. The batch envelope describes the batch; the individual readings are in batch.readings. When batch is present, the top-level metrics field MUST still be present and MUST contain the most recent reading for backward compatibility with consumers that do not support batch processing.",
+            "properties": {
+                "batch_id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": "Unique identifier for this batch"
+                },
+                "batch_size": {
+                    "type": "integer",
+                    "minimum": 2,
+                    "maximum": 1000,
+                    "description": "Total number of readings in this batch"
+                },
+                "batch_start_ms": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "description": "timestamp_ms of the earliest reading in the batch"
+                },
+                "batch_end_ms": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "description": "timestamp_ms of the latest reading in the batch"
+                },
+                "is_replay": {
+                    "type": "boolean",
+                    "description": "True if this batch contains readings that were buffered during a connectivity outage and are being replayed after reconnection. Replay batches must be processed in timestamp order, not ingestion order."
+                },
+                "readings": {
+                    "type": "array",
+                    "minItems": 2,
+                    "maxItems": 1000,
+                    "description": "Ordered array of individual readings. Each reading repeats only the fields that vary per reading (timestamp_ms, sequence_number, metrics, calibration). Fields that are constant across the batch (tenant_id, factory_id, sensor_id, device_id, schema_version) are inherited from the top-level envelope.",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "timestamp_ms": {
+                                "type": "integer",
+                                "minimum": 0
+                            },
+                            "timestamp_iso": {
+                                "type": "string",
+                                "format": "date-time"
+                            },
+                            "sequence_number": {
+                                "type": "integer",
+                                "minimum": 0
+                            },
+                            "metrics": {
+                                "type": "object",
+                                "minProperties": 1,
+                                "additionalProperties": {
+                                    "oneOf": [
+                                        {
+                                            "type": "number"
+                                        },
+                                        {
+                                            "type": "object",
+                                            "properties": {
+                                                "value": {
+                                                    "type": "number"
+                                                },
+                                                "unit": {
+                                                    "type": "string"
+                                                },
+                                                "quality": {
+                                                    "type": "string",
+                                                    "enum": [
+                                                        "good",
+                                                        "uncertain",
+                                                        "bad",
+                                                        "missing"
+                                                    ]
+                                                },
+                                                "quality_detail": {
+                                                    "type": "string"
+                                                },
+                                                "is_derived": {
+                                                    "type": "boolean"
+                                                }
+                                            },
+                                            "required": [
+                                                "value",
+                                                "unit",
+                                                "quality"
+                                            ],
+                                            "additionalProperties": false
+                                        }
+                                    ]
+                                }
+                            },
+                            "calibration_overdue": {
+                                "type": "boolean",
+                                "description": "Calibration status at this specific reading's timestamp"
+                            }
+                        },
+                        "required": [
+                            "timestamp_ms",
+                            "sequence_number",
+                            "metrics"
+                        ],
+                        "additionalProperties": false
+                    }
+                }
+            },
+            "required": [
+                "batch_id",
+                "batch_size",
+                "batch_start_ms",
+                "batch_end_ms",
+                "is_replay",
+                "readings"
+            ],
+            "additionalProperties": false
+        },
+        "metadata": {
+            "type": "object",
+            "properties": {
+                "firmware_version": {
+                    "type": "string",
+                    "pattern": "^\\d+\\.\\d+\\.\\d+$",
+                    "description": "Semantic version of edge firmware running on the device"
+                },
+                "location": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "Human-readable physical location of the sensor within the factory (e.g. 'Line 3 - Conveyor Motor A')"
+                },
+                "hardware_id": {
+                    "type": "string",
+                    "description": "Physical hardware serial number or MAC address of the sensor unit itself (distinct from device_id which is the edge compute node)"
+                },
+                "sensor_model": {
+                    "type": "string",
+                    "description": "Manufacturer model identifier of the sensor hardware (e.g. 'Siemens-SITRANS-P320')"
+                },
+                "protocol": {
+                    "type": "string",
+                    "enum": [
+                        "opc-ua",
+                        "modbus",
+                        "mqtt",
+                        "can-bus",
+                        "profinet",
+                        "direct",
+                        "simulated"
+                    ],
+                    "description": "Communication protocol used between the sensor and the edge ingestion layer. 'simulated' is used in synthetic data and test environments — must never appear in production."
+                },
+                "tags": {
+                    "type": "array",
+                    "items": {
+                        "type": "string",
+                        "pattern": "^[a-z0-9_-]{1,32}$"
+                    },
+                    "uniqueItems": true,
+                    "description": "Operator-defined tags for grouping and filtering (e.g. ['critical', 'line-3', 'motor', 'preventive-maintenance'])"
+                }
+            },
+            "required": [
+                "firmware_version",
+                "location"
+            ],
+            "additionalProperties": true
+        },
+        "extensions": {
+            "type": "object",
+            "description": "Vendor-specific or factory-specific additional fields that do not fit the standard schema. All fields here are opaque to the core platform — they are stored but not used for routing, alerting, or model inference unless explicitly configured. Use this rather than top-level additionalProperties.",
+            "additionalProperties": true
         }
-    ]
+    },
+    "required": [
+        "schema_version",
+        "event_type",
+        "tenant_id",
+        "factory_id",
+        "sensor_id",
+        "device_id",
+        "timestamp_ms",
+        "ingested_at_ms",
+        "sequence_number",
+        "metrics",
+        "sampling",
+        "metadata"
+    ],
+    "additionalProperties": false
 }

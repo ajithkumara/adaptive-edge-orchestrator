@@ -1,8 +1,18 @@
 {
-  "version": 1,
-  "fields": [
-    {"name": "sensor_id", "type": "string"},
-    {"name": "timestamp", "type": "long"},
-    {"name": "value", "type": "float"}
-  ]
+  "schema_version": "1.0",
+  "event_type": "sensor_reading",
+  "sensor_id": "string",
+  "timestamp": "iso8601",
+  "metrics": {
+    "temperature": "float",
+    "pressure": "float",
+    "vibration": "float"
+  },
+  "anomaly_score": "float",
+  "connectivity_status": "string",
+  "edge_mode": "string",
+  "metadata": {
+    "firmware_version": "string",
+    "location": "string"
+  }
 }

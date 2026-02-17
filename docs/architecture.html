@@ -1,0 +1,779 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AdaptiveOrchestrator — Architecture</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mermaid/10.6.1/mermaid.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@300;400;600;700&family=Orbitron:wght@400;700;900&display=swap');
+
+  :root {
+    --bg:          #080c14;
+    --bg2:         #0d1420;
+    --bg3:         #111827;
+    --pink:        #f72585;
+    --blue:        #4cc9f0;
+    --indigo:      #4361ee;
+    --purple:      #7209b7;
+    --violet:      #b185ff;
+    --amber:       #f4a261;
+    --green:       #06d6a0;
+    --text:        #e2e8f0;
+    --text-dim:    #64748b;
+    --border:      rgba(76,201,240,0.15);
+    --glow-blue:   0 0 20px rgba(76,201,240,0.3);
+    --glow-pink:   0 0 20px rgba(247,37,133,0.3);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Rajdhani', sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Grid background */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(76,201,240,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(76,201,240,0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .wrapper {
+    position: relative;
+    z-index: 1;
+    max-width: 1600px;
+    margin: 0 auto;
+    padding: 40px 32px;
+  }
+
+  /* ── Header ── */
+  header {
+    margin-bottom: 48px;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 32px;
+  }
+
+  .header-top {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 20px;
+  }
+
+  .project-badge {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 11px;
+    color: var(--blue);
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    margin-bottom: 12px;
+    opacity: 0.7;
+  }
+
+  h1 {
+    font-family: 'Orbitron', sans-serif;
+    font-size: clamp(22px, 4vw, 42px);
+    font-weight: 900;
+    line-height: 1.1;
+    background: linear-gradient(135deg, var(--blue) 0%, var(--pink) 60%, var(--violet) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    letter-spacing: -1px;
+  }
+
+  .subtitle {
+    font-size: 15px;
+    color: var(--text-dim);
+    margin-top: 8px;
+    font-weight: 400;
+    letter-spacing: 0.5px;
+  }
+
+  .meta-pills {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    margin-top: 8px;
+  }
+
+  .pill {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 10px;
+    padding: 4px 12px;
+    border-radius: 2px;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    border: 1px solid;
+  }
+  .pill-blue   { color: var(--blue);   border-color: var(--blue);   background: rgba(76,201,240,0.05); }
+  .pill-pink   { color: var(--pink);   border-color: var(--pink);   background: rgba(247,37,133,0.05); }
+  .pill-violet { color: var(--violet); border-color: var(--violet); background: rgba(177,133,255,0.05); }
+  .pill-green  { color: var(--green);  border-color: var(--green);  background: rgba(6,214,160,0.05); }
+
+  /* ── Legend ── */
+  .legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 24px;
+    margin-bottom: 36px;
+    padding: 20px 24px;
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--blue);
+  }
+
+  .legend-title {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 3px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    width: 100%;
+    margin-bottom: 4px;
+  }
+
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+  }
+
+  .legend-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 1px;
+    flex-shrink: 0;
+  }
+
+  /* ── Diagram container ── */
+  .diagram-container {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 32px;
+    overflow-x: auto;
+    box-shadow: var(--glow-blue), inset 0 1px 0 rgba(76,201,240,0.1);
+    position: relative;
+  }
+
+  .diagram-container::before {
+    content: 'SYSTEM ARCHITECTURE v2.0';
+    position: absolute;
+    top: 12px;
+    right: 20px;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 10px;
+    color: var(--text-dim);
+    letter-spacing: 2px;
+    opacity: 0.4;
+  }
+
+  .mermaid {
+    min-width: 1200px;
+  }
+
+  /* ── Data flow table ── */
+  .flows-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+    gap: 16px;
+    margin-top: 40px;
+  }
+
+  .flow-card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    padding: 20px 24px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .flow-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0;
+    width: 3px;
+    height: 100%;
+  }
+  .flow-card.pink::before   { background: var(--pink); }
+  .flow-card.blue::before   { background: var(--blue); }
+  .flow-card.violet::before { background: var(--violet); }
+  .flow-card.green::before  { background: var(--green); }
+  .flow-card.amber::before  { background: var(--amber); }
+
+  .flow-card h3 {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 11px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    margin-bottom: 14px;
+    font-weight: 700;
+  }
+  .flow-card.pink   h3 { color: var(--pink); }
+  .flow-card.blue   h3 { color: var(--blue); }
+  .flow-card.violet h3 { color: var(--violet); }
+  .flow-card.green  h3 { color: var(--green); }
+  .flow-card.amber  h3 { color: var(--amber); }
+
+  .flow-step {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    margin-bottom: 10px;
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--text);
+  }
+
+  .flow-arrow {
+    font-family: 'Share Tech Mono', monospace;
+    color: var(--text-dim);
+    flex-shrink: 0;
+    margin-top: 1px;
+    font-size: 11px;
+  }
+
+  .flow-label {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 10px;
+    color: var(--text-dim);
+    display: block;
+    margin-top: 2px;
+  }
+
+  /* ── Key decisions ── */
+  .decisions {
+    margin-top: 40px;
+    padding: 28px 32px;
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-top: 2px solid var(--pink);
+  }
+
+  .decisions h2 {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 13px;
+    letter-spacing: 3px;
+    color: var(--pink);
+    text-transform: uppercase;
+    margin-bottom: 20px;
+  }
+
+  .decision-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 16px;
+  }
+
+  .decision-item {
+    display: flex;
+    gap: 14px;
+    align-items: flex-start;
+  }
+
+  .decision-num {
+    font-family: 'Orbitron', monospace;
+    font-size: 18px;
+    font-weight: 900;
+    color: var(--pink);
+    opacity: 0.4;
+    line-height: 1;
+    flex-shrink: 0;
+    width: 28px;
+  }
+
+  .decision-text strong {
+    display: block;
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text);
+    margin-bottom: 4px;
+    letter-spacing: 0.3px;
+  }
+
+  .decision-text span {
+    font-size: 12px;
+    color: var(--text-dim);
+    line-height: 1.6;
+  }
+
+  /* ── Footer ── */
+  footer {
+    margin-top: 48px;
+    padding-top: 24px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+
+  footer span {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 11px;
+    color: var(--text-dim);
+    letter-spacing: 1px;
+  }
+
+  /* ── Mermaid theme overrides ── */
+  .mermaid svg { max-width: 100%; }
+</style>
+</head>
+<body>
+<div class="wrapper">
+
+  <header>
+    <div class="header-top">
+      <div>
+        <div class="project-badge">M.Sc. Artificial Intelligence · SaaS Platform</div>
+        <h1>AdaptiveOrchestrator</h1>
+        <div class="subtitle">Dynamic Edge–Cloud Orchestration Framework for Resilient Industrial Anomaly Detection</div>
+      </div>
+      <div class="meta-pills">
+        <span class="pill pill-pink">Edge ↔ Cloud</span>
+        <span class="pill pill-blue">Kafka · Spark · Delta Lake</span>
+        <span class="pill pill-violet">MLflow · OTA</span>
+        <span class="pill pill-green">3-Mode Orchestration</span>
+      </div>
+    </div>
+  </header>
+
+  <div class="legend">
+    <div class="legend-title">Layer Legend</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#4cc9f0;border:1px solid #4cc9f0"></div>Physical / Sensors</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#4361ee;border:1px solid #4361ee"></div>Edge Processing</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#f72585;border:1px solid #f72585"></div>Local Orchestrator</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#f72585;border:2px solid #f72585;opacity:0.6"></div>Edge-Only Mode</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#4cc9f0;border:2px solid #4cc9f0;opacity:0.6"></div>Hybrid Mode</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#7209b7;border:2px solid #7209b7"></div>Cloud-Optimized Mode</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#3a0ca3;border:1px solid #7209b7"></div>Cloud Pipeline</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#4361ee;border:1px solid #4361ee;opacity:0.7"></div>MLOps Loop</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#f4a261;border:1px solid #f4a261"></div>Human Actors</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#06d6a0;border:1px solid #06d6a0;opacity:0.5"></div>Observability</div>
+  </div>
+
+  <div class="diagram-container">
+    <div class="mermaid">
+%%{init: {
+  'theme': 'base',
+  'themeVariables': {
+    'primaryColor': '#0d1420',
+    'primaryTextColor': '#e2e8f0',
+    'primaryBorderColor': '#4cc9f0',
+    'lineColor': '#4361ee',
+    'secondaryColor': '#111827',
+    'tertiaryColor': '#0f1923',
+    'background': '#080c14',
+    'mainBkg': '#0d1420',
+    'nodeBorder': '#4cc9f0',
+    'clusterBkg': '#0a0f1a',
+    'clusterBorder': '#1e2d4a',
+    'titleColor': '#4cc9f0',
+    'edgeLabelBackground': '#0d1420',
+    'fontFamily': 'Rajdhani, sans-serif',
+    'fontSize': '13px'
+  }
+}}%%
+flowchart TB
+
+    classDef sensor       fill:#0a1628,stroke:#4cc9f0,stroke-width:2px,color:#a8d8f0,font-size:12px
+    classDef edge_comp    fill:#0d1a30,stroke:#4361ee,stroke-width:2px,color:#c0d4f5,font-size:12px
+    classDef orch_node    fill:#0f1f3d,stroke:#f72585,stroke-width:2px,color:#ffd6e8,font-size:12px
+    classDef decision     fill:#f72585,stroke:#ffffff,stroke-width:2px,color:#ffffff,font-weight:bold
+    classDef mode_e       fill:#1a0818,stroke:#f72585,stroke-width:2px,color:#f72585,font-weight:bold
+    classDef mode_h       fill:#041520,stroke:#4cc9f0,stroke-width:2px,color:#4cc9f0,font-weight:bold
+    classDef mode_c       fill:#0d0820,stroke:#b185ff,stroke-width:2px,color:#b185ff,font-weight:bold
+    classDef cloud_comp   fill:#0a0d18,stroke:#7209b7,stroke-width:2px,color:#d0b8ff,font-size:12px
+    classDef storage_comp fill:#080c15,stroke:#3a0ca3,stroke-width:2px,color:#b8a0e8,font-size:12px
+    classDef mlops_comp   fill:#080e1a,stroke:#4361ee,stroke-width:1px,color:#a0b4e0,font-size:12px
+    classDef obs_comp     fill:#060d12,stroke:#06d6a0,stroke-width:1px,color:#80e8c8,font-size:11px
+    classDef human_comp   fill:#12100a,stroke:#f4a261,stroke-width:2px,color:#f4c898,font-size:12px
+    classDef schema_tag   fill:#06080f,stroke:#3a0ca3,stroke-width:1px,color:#5a5a8a,font-style:italic,font-size:11px
+    classDef ctrl_comp    fill:#0a0d18,stroke:#4cc9f0,stroke-width:1px,color:#80c8e0,font-size:12px
+
+    %% ══════════════════════════════
+    %% PHYSICAL LAYER
+    %% ══════════════════════════════
+    subgraph PHYS["  ⬡  PHYSICAL — IoT Sensors"]
+        direction LR
+        S1["🌡 Temperature"]
+        S2["📳 Vibration"]
+        S3["💧 Pressure"]
+        S4["🔊 Acoustic"]
+    end
+
+    %% ══════════════════════════════
+    %% EDGE DEVICE
+    %% ══════════════════════════════
+    subgraph EDGE["  ▣  EDGE DEVICE  (one per factory, edge-resident)"]
+        direction TB
+
+        subgraph EI_BOX["Ingestion"]
+            EI["edge/ingestion\nkafka_consumer · validator"]
+        end
+
+        subgraph INF_BOX["Inference Engine"]
+            direction LR
+            ML["edge/inference\nmodel_loader.py"]
+            IF["edge/inference\nIsolation Forest\n+ Rule-Based Detector"]
+        end
+
+        subgraph BUF_BOX["Local Buffer  (offline resilience)"]
+            direction LR
+            LS["edge/buffering\nlocal_store.py\nNATS JetStream"]
+            RM["edge/buffering\nreplay_manager.py\nrate-limited flush"]
+        end
+
+        subgraph TEL_BOX["Telemetry"]
+            direction LR
+            RMON["resource_monitor.py\nCPU · Mem · Queue"]
+            MEX["metrics_exporter.py\nPrometheus remote write"]
+        end
+
+        SCV2["📄 sensor_v2"]
+        SIR1["📄 inference_result_v1"]
+    end
+
+    %% ══════════════════════════════
+    %% LOCAL ORCHESTRATOR
+    %% ══════════════════════════════
+    subgraph LORCH["  ◈  LOCAL ORCHESTRATOR  (edge-resident · cloud-managed policy)"]
+        direction TB
+
+        CTX["Context Monitor\nNetwork latency  ·  CPU %  ·  Anomaly score  ·  Severity"]
+
+        subgraph SIG["Live Signals"]
+            direction LR
+            SG1["🌐 Network\n≤300ms normal\n301–500ms degraded\n>500ms offline"]
+            SG2["⚙️ CPU %\nhigh / low\nwatermark"]
+            SG3["⚠️ Score 0–1\nthreshold\nfrom policy"]
+            SG4["🔴 Severity\nnone · info\nwarning · critical"]
+        end
+
+        OD{{"Adaptive\nOrchestrator\nRouting\nDecision"}}
+
+        subgraph MODES["Operational Modes"]
+            direction LR
+            ME["EDGE-ONLY\noffline or\nlatency > 500ms"]
+            MH["HYBRID\ncritical anomaly\nmedium-high severity"]
+            MC["CLOUD-OPTIMIZED\nroutine · balanced\nresources · online"]
+        end
+
+        SS["orchestrator/local\nstate_store.py\ncurrent mode · policy cache"]
+        POL["📄 policy_v1\nsigned · TTL-guarded\ncached on disk"]
+    end
+
+    %% ══════════════════════════════
+    %% CLOUD PIPELINE
+    %% ══════════════════════════════
+    subgraph CPIPE["  ☁  CLOUD PIPELINE"]
+        direction TB
+
+        KFK["Apache Kafka  (AWS MSK)\ntopics: sensor-v2 · inference-v1 · system-events-v1 · policy-v1"]
+
+        subgraph GOV["Governance"]
+            direction LR
+            SREG["schema_registry\n_client.py"]
+            DQC["data_quality\n_checks.py"]
+        end
+
+        SPK["Apache Spark\nStructured Streaming\ncloud/streaming/spark_stream.py"]
+
+        SHAP["cloud/explainability\nshap_explainer.py\nSHAP TreeExplainer\ncritical anomalies only"]
+
+        subgraph DLK["Delta Lake  (partitioned: tenant_id › factory_id › date)"]
+            direction LR
+            DL1["Δ sensor_readings"]
+            DL2["Δ inference_results\n+ SHAP explanations"]
+            DL3["Δ system_events"]
+        end
+
+        SSE1["📄 system_event_v1"]
+    end
+
+    %% ══════════════════════════════
+    %% CONTROL PLANE
+    %% ══════════════════════════════
+    subgraph CPLANE["  ⬡  CLOUD CONTROL PLANE  (multi-tenant SaaS)"]
+        direction LR
+        CPOL["orchestrator/control_plane\npolicy_service.py · fleet_registry.py"]
+        CPDB["Policy Store\nPostgreSQL\npolicy_v1 documents"]
+    end
+
+    %% ══════════════════════════════
+    %% MLOps LOOP
+    %% ══════════════════════════════
+    subgraph MLOPS["  ⟳  MLOps — Model Lifecycle"]
+        direction LR
+        DRFT["Drift Monitor\nscheduled Spark job\nscore distribution shift"]
+        RTRG{{"Retrain?\nperf < threshold"}}
+        APPR["Human Approval\nenterprise\ncompliance gate"]
+        TRNG["Training Script\nPython · scikit-learn\nIsolation Forest"]
+        MFLW["MLflow\nExperiment Tracking\n+ Model Registry"]
+        S3M["S3 Model\nArtifact Store\nversioned"]
+        OTAD["OTA Deployment\nbump model version\nin policy_v1"]
+    end
+
+    %% ══════════════════════════════
+    %% OBSERVABILITY
+    %% ══════════════════════════════
+    subgraph OBSV["  ◉  OBSERVABILITY"]
+        direction LR
+        PROM["Prometheus\ninfra + business\n+ ML metrics"]
+        GRAF["Grafana\ndashboard.json\nall-in-one view"]
+        OTEL["OpenTelemetry\ndistributed tracing\ncorrelation_id"]
+    end
+
+    %% ══════════════════════════════
+    %% HUMANS
+    %% ══════════════════════════════
+    subgraph HUM["  👤  HUMAN ACTORS"]
+        direction LR
+        DASH["Cloud Dashboard\nreal-time monitoring\nalert management"]
+        OPS["Operators\nTechnicians\nEngineers"]
+    end
+
+    %% ══════════════════════════════════════════════
+    %% FLOWS
+    %% ══════════════════════════════════════════════
+
+    %% Physical → Edge
+    S1 & S2 & S3 & S4 -->|raw signals| EI
+    EI --> SCV2 --> IF
+    ML -->|"load artifact"| IF
+    IF --> SIR1
+
+    %% Edge → Orchestrator
+    SIR1 --> CTX
+    RMON -->|"cpu · mem · queue"| CTX
+    CTX --> SG1 & SG2 & SG3 & SG4
+    SG1 & SG2 & SG3 & SG4 --> OD
+    SS -->|"active policy\ncurrent mode"| OD
+    POL -.->|"cached · TTL-guarded"| SS
+
+    %% Mode routing
+    OD -->|"offline / latency > 500ms"| ME
+    OD -->|"critical anomaly\nmed-high severity"| MH
+    OD -->|"routine ·\nbalanced resources"| MC
+
+    %% Edge-Only path
+    ME -->|"buffer events"| LS
+    ME -->|"local alert"| MEX
+    LS -->|"sync when\nconnectivity\nrestored"| RM
+    RM -->|"rate-limited\nreplay"| KFK
+
+    %% Hybrid path
+    MH -->|"inference result\n+ raw event"| KFK
+    MH -->|"request\nSHAP"| SHAP
+
+    %% Cloud-Optimized path
+    MC -->|"all results\n+ telemetry sample"| KFK
+
+    %% Cloud pipeline
+    KFK --> SREG --> DQC --> SPK
+    SPK --> DL1 & DL2 & DL3
+    SPK -->|"critical events"| SHAP
+    SHAP -->|"top_features\nexplanation_id"| DL2
+
+    %% Control plane
+    CPOL <-->|"read/write\npolicies"| CPDB
+    CPOL -->|"push policy_v1\nsigned · versioned"| POL
+    CPOL -->|"system_event_v1\nfleet telemetry"| KFK
+
+    %% MLOps loop
+    DL1 & DL2 -->|"training window"| DRFT
+    DRFT -->|"drift detected"| RTRG
+    RTRG -->|"YES — needs\napproval"| APPR
+    RTRG -->|"NO — continue\nmonitoring"| DRFT
+    APPR -->|"approved"| TRNG
+    TRNG --> MFLW --> S3M
+    S3M -->|"notify\ncontrol plane"| CPOL
+    CPOL -->|"bump model version\nin policy_v1"| OTAD
+    OTAD -->|"edge fetches\nnew artifact"| ML
+    ML -->|"system_event_v1\nmodel_deployment"| KFK
+
+    %% Observability
+    MEX -->|"remote write"| PROM
+    SPK -->|"metrics"| PROM
+    PROM --> GRAF
+    EI & IF & SPK & SHAP -->|"trace spans"| OTEL
+    OTEL --> GRAF
+
+    %% Humans
+    DL1 & DL2 & DL3 --> DASH
+    GRAF --> DASH
+    DASH --> OPS
+    OPS -->|"alert ack\nfeedback"| CPOL
+
+    %% ── Styles ──
+    class S1,S2,S3,S4 sensor
+    class EI,IF,LS,RM,RMON,MEX edge_comp
+    class ML edge_comp
+    class CTX,SG1,SG2,SG3,SG4,SS orch_node
+    class OD,RTRG decision
+    class ME mode_e
+    class MH mode_h
+    class MC mode_c
+    class KFK,SPK,SHAP,SREG,DQC cloud_comp
+    class DL1,DL2,DL3 storage_comp
+    class DRFT,TRNG,MFLW,S3M,OTAD mlops_comp
+    class PROM,GRAF,OTEL obs_comp
+    class OPS,DASH,APPR human_comp
+    class CPOL,CPDB ctrl_comp
+    class SCV2,SIR1,SSE1,POL schema_tag
+    </div>
+  </div>
+
+  <!-- Flow descriptions -->
+  <div class="flows-grid">
+    <div class="flow-card pink">
+      <h3>Edge-Only Mode</h3>
+      <div class="flow-step"><span class="flow-arrow">01 →</span><div>Sensors emit readings — ingestion validates against sensor_v2 schema<span class="flow-label">edge/ingestion/validator.py</span></div></div>
+      <div class="flow-step"><span class="flow-arrow">02 →</span><div>Isolation Forest + rule engine scores anomaly locally<span class="flow-label">edge/inference/isolation_forest.py</span></div></div>
+      <div class="flow-step"><span class="flow-arrow">03 →</span><div>Events buffered in NATS JetStream with TTL + priority queue<span class="flow-label">edge/buffering/local_store.py</span></div></div>
+      <div class="flow-step"><span class="flow-arrow">04 →</span><div>Local alerts dispatched immediately via metrics exporter<span class="flow-label">edge/telemetry/metrics_exporter.py</span></div></div>
+      <div class="flow-step"><span class="flow-arrow">05 →</span><div>On reconnect: replay_manager flushes buffer at controlled rate<span class="flow-label">edge/buffering/replay_manager.py</span></div></div>
+    </div>
+
+    <div class="flow-card blue">
+      <h3>Hybrid Mode</h3>
+      <div class="flow-step"><span class="flow-arrow">01 →</span><div>Edge inference detects critical/high anomaly (score > threshold)<span class="flow-label">domain/anomaly/severity.py</span></div></div>
+      <div class="flow-step"><span class="flow-arrow">02 →</span><div>inference_result_v1 + raw sensor_v2 pushed to Kafka<span class="flow-label">cloud/streaming/kafka_consumer.py</span></div></div>
+      <div class="flow-step"><span class="flow-arrow">03 →</span><div>SHAP TreeExplainer computes top feature contributions<span class="flow-label">cloud/explainability/shap_explainer.py</span></div></div>
+      <div class="flow-step"><span class="flow-arrow">04 →</span><div>explanation_id + top_features stored in inference_results Delta table<span class="flow-label">cloud/storage/delta_writer.py</span></div></div>
+      <div class="flow-step"><span class="flow-arrow">05 →</span><div>Alert dispatched with explanation context to operators<span class="flow-label">system_event_v1 · alert_dispatched</span></div></div>
+    </div>
+
+    <div class="flow-card violet">
+      <h3>Cloud-Optimized Mode</h3>
+      <div class="flow-step"><span class="flow-arrow">01 →</span><div>All inference results + sampled telemetry forwarded to Kafka<span class="flow-label">cloud/streaming/kafka_consumer.py</span></div></div>
+      <div class="flow-step"><span class="flow-arrow">02 →</span><div>Schema registry validates + Spark consumes structured stream<span class="flow-label">cloud/governance/schema_registry_client.py</span></div></div>
+      <div class="flow-step"><span class="flow-arrow">03 →</span><div>Full analytics, feature extraction, batch scoring in Spark<span class="flow-label">cloud/streaming/spark_stream.py</span></div></div>
+      <div class="flow-step"><span class="flow-arrow">04 →</span><div>Delta Lake tables updated across all three schema types<span class="flow-label">Δ sensor_readings · inference_results · system_events</span></div></div>
+    </div>
+
+    <div class="flow-card green">
+      <h3>MLOps Retraining Loop</h3>
+      <div class="flow-step"><span class="flow-arrow">01 →</span><div>Scheduled Spark job monitors anomaly score distribution drift<span class="flow-label">domain/anomaly/scoring.py drift detection</span></div></div>
+      <div class="flow-step"><span class="flow-arrow">02 →</span><div>Performance threshold breach triggers retraining recommendation</div></div>
+      <div class="flow-step"><span class="flow-arrow">03 →</span><div>Human approval gate (enterprise compliance sign-off)<span class="flow-label">system_event_v1 · policy_update</span></div></div>
+      <div class="flow-step"><span class="flow-arrow">04 →</span><div>Training script runs on Delta Lake data → MLflow logs experiment<span class="flow-label">experiments/benchmarks/ · MLflow registry</span></div></div>
+      <div class="flow-step"><span class="flow-arrow">05 →</span><div>Control plane bumps model version in policy_v1 → OTA to edge<span class="flow-label">orchestrator/control_plane/policy_service.py</span></div></div>
+    </div>
+
+    <div class="flow-card amber">
+      <h3>Policy Lifecycle</h3>
+      <div class="flow-step"><span class="flow-arrow">01 →</span><div>Control plane issues signed policy_v1 document per factory<span class="flow-label">orchestrator/control_plane/policy_service.py</span></div></div>
+      <div class="flow-step"><span class="flow-arrow">02 →</span><div>Local orchestrator validates signature + effective_from timestamp</div></div>
+      <div class="flow-step"><span class="flow-arrow">03 →</span><div>Policy cached to disk — survives reboots and cloud outages<span class="flow-label">orchestrator/local/state_store.py</span></div></div>
+      <div class="flow-step"><span class="flow-arrow">04 →</span><div>TTL monitored — fallback_mode activated if policy expires<span class="flow-label">policy_v1.policy_ttl_hours</span></div></div>
+      <div class="flow-step"><span class="flow-arrow">05 →</span><div>system_event_v1 (policy_update) confirms successful application<span class="flow-label">system_event_v1 · policy_update subtype</span></div></div>
+    </div>
+  </div>
+
+  <!-- Key architectural decisions -->
+  <div class="decisions">
+    <h2>Key Architectural Decisions</h2>
+    <div class="decision-grid">
+      <div class="decision-item">
+        <div class="decision-num">01</div>
+        <div class="decision-text">
+          <strong>Policy Execution at Edge, Policy Management in Cloud</strong>
+          <span>Local orchestrator applies routing rules without cloud round-trip. Control plane manages policy versions asynchronously. Outage-proof by design.</span>
+        </div>
+      </div>
+      <div class="decision-item">
+        <div class="decision-num">02</div>
+        <div class="decision-text">
+          <strong>Kafka End-to-End — No Kinesis</strong>
+          <span>Single streaming technology across edge buffer and cloud pipeline. Native offset-based replay handles post-outage recovery without custom logic.</span>
+        </div>
+      </div>
+      <div class="decision-item">
+        <div class="decision-num">03</div>
+        <div class="decision-text">
+          <strong>SHAP on Critical Anomalies Only</strong>
+          <span>TreeExplainer runs cloud-side for high-severity events. Edge provides fast lightweight scoring. Decouples detection latency from explanation latency.</span>
+        </div>
+      </div>
+      <div class="decision-item">
+        <div class="decision-num">04</div>
+        <div class="decision-text">
+          <strong>Three Modes, One Cloud Pipeline</strong>
+          <span>All modes feed the same Kafka → Spark → Delta Lake path. Mode determines event volume and type, not infrastructure topology.</span>
+        </div>
+      </div>
+      <div class="decision-item">
+        <div class="decision-num">05</div>
+        <div class="decision-text">
+          <strong>Human Approval Gate for Retraining</strong>
+          <span>Drift detection is automated. Model promotion requires sign-off. Satisfies enterprise compliance requirements without blocking routine operations.</span>
+        </div>
+      </div>
+      <div class="decision-item">
+        <div class="decision-num">06</div>
+        <div class="decision-text">
+          <strong>Tenant = Company, Factory = Subdivision</strong>
+          <span>tenant_id is the top-level partition key on every event and every Delta table. Supports shared infrastructure today, dedicated-per-tenant upgrade path tomorrow.</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <footer>
+    <span>AdaptiveOrchestrator · Architecture v2.0</span>
+    <span>Edge ↔ Cloud · Kafka · Spark · Delta Lake · MLflow · OpenTelemetry</span>
+    <span>schema family: sensor_v2 · inference_result_v1 · system_event_v1 · policy_v1</span>
+  </footer>
+
+</div>
+
+<script>
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: 'base',
+    themeVariables: {
+      primaryColor: '#0d1420',
+      primaryTextColor: '#e2e8f0',
+      primaryBorderColor: '#4cc9f0',
+      lineColor: '#4361ee',
+      secondaryColor: '#111827',
+      tertiaryColor: '#0f1923',
+      background: '#080c14',
+      mainBkg: '#0d1420',
+      clusterBkg: '#0a0f1a',
+      clusterBorder: '#1e2d4a',
+      titleColor: '#4cc9f0',
+      edgeLabelBackground: '#0d1420',
+      fontFamily: 'Rajdhani, sans-serif',
+      fontSize: '13px'
+    },
+    flowchart: {
+      htmlLabels: true,
+      curve: 'basis',
+      padding: 20,
+      nodeSpacing: 40,
+      rankSpacing: 60
+    }
+  });
+</script>
+</body>
+</html>

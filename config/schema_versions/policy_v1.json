@@ -1,0 +1,570 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://adaptive-orchestrator.io/schemas/policy/v1",
+  "title": "OrchestrationPolicyV1",
+  "description": "Versioned orchestration policy document pushed from the cloud control plane to the local edge orchestrator. This is not an event — it is a durable configuration document. The local orchestrator caches this to disk and applies it until a newer version arrives. All routing decisions, cost limits, escalation rules, and mode transition thresholds are derived from this document.",
+  "x-version": "1.0.0",
+  "x-introduced": "2025-01-01",
+  "x-deprecated": false,
+  "x-successor": null,
+  "x-document-type": "configuration",
+  "x-related-schemas": [
+    "https://adaptive-orchestrator.io/schemas/system-event/v1"
+  ],
+  "type": "object",
+
+  "properties": {
+
+    "schema_version": {
+      "type": "string",
+      "const": "1.0"
+    },
+    "document_type": {
+      "type": "string",
+      "const": "orchestration_policy"
+    },
+
+    "policy_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Unique identifier for this specific policy document instance"
+    },
+    "policy_version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$",
+      "description": "Semantic version of this policy. The local orchestrator rejects a policy whose version is older than its currently loaded policy."
+    },
+    "previous_policy_version": {
+      "type": ["string", "null"],
+      "description": "The version this policy supersedes. Null for the initial policy delivered to a new factory."
+    },
+
+    "tenant_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9]{3,16}$"
+    },
+    "factory_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9_-]{3,32}$"
+    },
+
+    "effective_from_ms": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "The local orchestrator must not apply this policy before this timestamp, epoch ms UTC. Enables scheduled policy rollouts."
+    },
+    "expires_at_ms": {
+      "type": ["integer", "null"],
+      "minimum": 0,
+      "description": "If set, the policy expires at this timestamp. After expiry, the local orchestrator falls back to fallback_mode. Null means no expiry."
+    },
+    "issued_at_ms": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Timestamp when the control plane issued this policy document, epoch ms UTC"
+    },
+    "policy_ttl_hours": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 720,
+      "description": "Maximum number of hours the local orchestrator may operate on this policy without receiving a refresh from the control plane. After TTL expiry, the orchestrator transitions to fallback_mode. Prevents stale policies from running indefinitely during long cloud outages."
+    },
+
+    "signature": {
+      "type": "object",
+      "description": "Cryptographic signature over the policy body. The local orchestrator must verify this before applying. Prevents tampered or forged policies.",
+      "properties": {
+        "algorithm": {
+          "type": "string",
+          "enum": ["RS256", "ES256"],
+          "description": "Signing algorithm. ES256 (ECDSA P-256) preferred for constrained edge hardware."
+        },
+        "key_id": {
+          "type": "string",
+          "description": "ID of the public key to use for verification, referencing the key registry on the edge device"
+        },
+        "value": {
+          "type": "string",
+          "description": "Base64url-encoded signature over the canonical JSON serialisation of all fields except 'signature'"
+        }
+      },
+      "required": ["algorithm", "key_id", "value"],
+      "additionalProperties": false
+    },
+
+    "mode_thresholds": {
+      "type": "object",
+      "description": "Defines the metric boundaries that trigger operational mode transitions. The local orchestrator evaluates these continuously against live telemetry from the edge_health subsystem.",
+      "properties": {
+
+        "connectivity": {
+          "type": "object",
+          "description": "Network condition thresholds. The orchestrator probes connectivity on a defined interval and classifies status before evaluating mode transitions.",
+          "properties": {
+            "degraded_latency_ms": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Round-trip latency above which connectivity is classified as 'degraded'. Typically 300ms for industrial WANs."
+            },
+            "offline_timeout_ms": {
+              "type": "integer",
+              "minimum": 1000,
+              "description": "Duration of failed connectivity probes before status is classified as 'offline'"
+            },
+            "probe_interval_ms": {
+              "type": "integer",
+              "minimum": 1000,
+              "description": "How frequently the edge agent probes connectivity, in ms"
+            },
+            "probe_endpoint": {
+              "type": "string",
+              "format": "uri",
+              "description": "Lightweight endpoint to probe for connectivity. Should be a dedicated health check, not a full API call."
+            }
+          },
+          "required": [
+            "degraded_latency_ms",
+            "offline_timeout_ms",
+            "probe_interval_ms",
+            "probe_endpoint"
+          ],
+          "additionalProperties": false
+        },
+
+        "cpu": {
+          "type": "object",
+          "description": "CPU utilisation thresholds. High CPU forces the orchestrator to reduce cloud escalations.",
+          "properties": {
+            "high_watermark_pct": {
+              "type": "number",
+              "minimum": 50,
+              "maximum": 100,
+              "description": "CPU utilisation above which cloud escalation is suspended to protect local inference quality"
+            },
+            "low_watermark_pct": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 95,
+              "description": "CPU utilisation below which cloud escalation is re-enabled after being suspended"
+            },
+            "evaluation_window_ms": {
+              "type": "integer",
+              "minimum": 1000,
+              "description": "Rolling window over which CPU utilisation is averaged before threshold comparison"
+            }
+          },
+          "required": ["high_watermark_pct", "low_watermark_pct", "evaluation_window_ms"],
+          "additionalProperties": false
+        },
+
+        "mode_transition_rules": {
+          "type": "array",
+          "description": "Ordered list of rules evaluated by the local orchestrator to determine mode transitions. Rules are evaluated in order and the first matching rule wins. This is the authoritative state machine definition — domain/policy/transitions.py validates that these rules are internally consistent.",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "properties": {
+              "rule_id": {
+                "type": "string",
+                "description": "Unique identifier for this rule within this policy version"
+              },
+              "description": {
+                "type": "string",
+                "description": "Human-readable explanation of when this rule fires"
+              },
+              "from_mode": {
+                "type": "string",
+                "enum": ["edge_only", "hybrid", "cloud_optimized", "any"]
+              },
+              "conditions": {
+                "type": "object",
+                "description": "All specified conditions must be true simultaneously for the rule to fire",
+                "properties": {
+                  "connectivity_status": {
+                    "type": ["string", "null"],
+                    "enum": ["online", "degraded", "offline", null]
+                  },
+                  "cpu_above_pct": {
+                    "type": ["number", "null"],
+                    "minimum": 0,
+                    "maximum": 100
+                  },
+                  "cpu_below_pct": {
+                    "type": ["number", "null"],
+                    "minimum": 0,
+                    "maximum": 100
+                  },
+                  "anomaly_severity": {
+                    "type": ["string", "null"],
+                    "enum": ["none", "info", "warning", "critical", null]
+                  },
+                  "cost_budget_consumed_above_pct": {
+                    "type": ["number", "null"],
+                    "minimum": 0,
+                    "maximum": 200
+                  }
+                },
+                "additionalProperties": false
+              },
+              "to_mode": {
+                "type": "string",
+                "enum": ["edge_only", "hybrid", "cloud_optimized"]
+              },
+              "priority": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "Lower number = higher priority. Rules with the same priority are evaluated in array order."
+              },
+              "hysteresis_ms": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Minimum time a condition must be continuously true before the transition fires. Prevents oscillation."
+              }
+            },
+            "required": ["rule_id", "from_mode", "conditions", "to_mode", "priority", "hysteresis_ms"],
+            "additionalProperties": false
+          }
+        }
+
+      },
+      "required": ["connectivity", "cpu", "mode_transition_rules"],
+      "additionalProperties": false
+    },
+
+    "cost_budget": {
+      "type": "object",
+      "description": "Cost control configuration. The local orchestrator tracks cloud API call costs in real time against these budgets and takes automatic action when limits are approached.",
+      "properties": {
+        "currency": {
+          "type": "string",
+          "enum": ["USD", "EUR", "GBP"],
+          "description": "Currency for all cost values in this block"
+        },
+        "hourly_limit": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Maximum cloud spend per rolling hour"
+        },
+        "daily_limit": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Maximum cloud spend per calendar day in tenant timezone"
+        },
+        "monthly_limit": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Maximum cloud spend per calendar month"
+        },
+        "warning_threshold_pct": {
+          "type": "number",
+          "minimum": 1,
+          "maximum": 99,
+          "description": "Percentage of any budget limit at which a cost_budget_warning system event is emitted"
+        },
+        "cost_per_operation": {
+          "type": "object",
+          "description": "Unit costs used by the local orchestrator to estimate spend before committing to a cloud operation. These are estimates — actual billing from the cloud provider is the source of truth.",
+          "properties": {
+            "cloud_inference_call_usd": { "type": "number", "minimum": 0 },
+            "shap_explanation_call_usd": { "type": "number", "minimum": 0 },
+            "delta_write_per_mb_usd": { "type": "number", "minimum": 0 },
+            "egress_per_mb_usd": { "type": "number", "minimum": 0 }
+          },
+          "required": [
+            "cloud_inference_call_usd",
+            "shap_explanation_call_usd",
+            "delta_write_per_mb_usd",
+            "egress_per_mb_usd"
+          ],
+          "additionalProperties": false
+        },
+        "auto_actions": {
+          "type": "object",
+          "description": "Automatic cost-control actions the orchestrator may take without human intervention",
+          "properties": {
+            "reduce_shap_at_pct": {
+              "type": "number",
+              "minimum": 1,
+              "maximum": 100,
+              "description": "At this budget consumption percentage, reduce SHAP calls to critical anomalies only"
+            },
+            "disable_cloud_inference_at_pct": {
+              "type": "number",
+              "minimum": 1,
+              "maximum": 100,
+              "description": "At this budget consumption percentage, disable all cloud inference and force edge_only mode"
+            }
+          },
+          "required": ["reduce_shap_at_pct", "disable_cloud_inference_at_pct"],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "currency",
+        "hourly_limit",
+        "daily_limit",
+        "monthly_limit",
+        "warning_threshold_pct",
+        "cost_per_operation",
+        "auto_actions"
+      ],
+      "additionalProperties": false
+    },
+
+    "escalation_rules": {
+      "type": "object",
+      "description": "Controls which anomalies are escalated from the edge to the cloud for SHAP explainability and cloud model validation.",
+      "properties": {
+        "escalate_on_severity": {
+          "type": "array",
+          "items": { "type": "string", "enum": ["info", "warning", "critical"] },
+          "minItems": 1,
+          "description": "Severity levels that trigger cloud escalation when in hybrid mode. Typically ['critical'] to minimise cost."
+        },
+        "shap_on_severity": {
+          "type": "array",
+          "items": { "type": "string", "enum": ["info", "warning", "critical"] },
+          "description": "Severity levels that trigger SHAP explanation computation. Should be a subset of or equal to escalate_on_severity."
+        },
+        "cooldown_ms": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Minimum time between cloud escalations for the same sensor_id, in milliseconds. Prevents alert storms from a single noisy sensor."
+        },
+        "max_escalations_per_hour": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Factory-wide cap on cloud escalations per rolling hour. Provides a hard cost ceiling independent of anomaly volume."
+        },
+        "alert_routing": {
+          "type": "array",
+          "description": "Defines where alerts are dispatched when anomalies are detected",
+          "items": {
+            "type": "object",
+            "properties": {
+              "channel": {
+                "type": "string",
+                "enum": ["webhook", "email", "pagerduty", "slack", "sms", "cmms"]
+              },
+              "severity_filter": {
+                "type": "array",
+                "items": { "type": "string", "enum": ["info", "warning", "critical"] },
+                "description": "Only dispatch to this channel for these severity levels"
+              },
+              "endpoint": {
+                "type": "string",
+                "description": "Delivery endpoint. For security, this is a reference key to the secrets manager, not a raw URL or credential."
+              },
+              "enabled": { "type": "boolean" }
+            },
+            "required": ["channel", "severity_filter", "endpoint", "enabled"],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "escalate_on_severity",
+        "shap_on_severity",
+        "cooldown_ms",
+        "max_escalations_per_hour",
+        "alert_routing"
+      ],
+      "additionalProperties": false
+    },
+
+    "model_config": {
+      "type": "object",
+      "description": "Configuration for the edge inference engine. Defines which model to load and its operational parameters.",
+      "properties": {
+        "active_model_id": {
+          "type": "string",
+          "description": "ID of the model artifact the edge should currently be running. The edge fetches this from the model registry if not already cached."
+        },
+        "active_model_version": {
+          "type": "string",
+          "pattern": "^\\d+\\.\\d+\\.\\d+$"
+        },
+        "model_registry_ref": {
+          "type": "string",
+          "format": "uri",
+          "description": "Location to fetch the model artifact from. References the model registry, not a public URL."
+        },
+        "anomaly_threshold": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 1.0,
+          "description": "The anomaly_score threshold above which is_anomaly is set to true. Stored here (not in the model artifact) because it is a business parameter tuned per customer, not a model parameter."
+        },
+        "retraining": {
+          "type": "object",
+          "description": "Configuration for autonomous model retraining at the edge or cloud",
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "min_samples_required": {
+              "type": "integer",
+              "minimum": 100,
+              "description": "Minimum number of recent readings required before a retrain is triggered"
+            },
+            "retrain_interval_hours": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "How frequently to check if retraining criteria are met"
+            },
+            "retrain_location": {
+              "type": "string",
+              "enum": ["edge", "cloud"],
+              "description": "'edge' for lightweight retraining on-device. 'cloud' for full Spark-based retraining with the complete historical dataset."
+            },
+            "drift_detection_enabled": {
+              "type": "boolean",
+              "description": "If true, the edge monitors anomaly score distribution for drift and triggers retraining proactively rather than waiting for the interval"
+            }
+          },
+          "required": [
+            "enabled",
+            "min_samples_required",
+            "retrain_interval_hours",
+            "retrain_location",
+            "drift_detection_enabled"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "active_model_id",
+        "active_model_version",
+        "model_registry_ref",
+        "anomaly_threshold",
+        "retraining"
+      ],
+      "additionalProperties": false
+    },
+
+    "fallback_config": {
+      "type": "object",
+      "description": "Defines safe-state behaviour when the policy is absent, expired, or cannot be validated.",
+      "properties": {
+        "fallback_mode": {
+          "type": "string",
+          "enum": ["edge_only", "hybrid"],
+          "description": "Operational mode to enter when no valid policy is available. Must never be 'cloud_optimized' — if policy is unavailable the edge must remain self-sufficient."
+        },
+        "alert_on_fallback": {
+          "type": "boolean",
+          "description": "If true, emit a system_event with subtype 'policy_update' and update_source 'default_fallback' when entering fallback"
+        },
+        "max_fallback_duration_hours": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "After this many hours in fallback without receiving a valid policy, the edge agent should alert operators via available channels"
+        }
+      },
+      "required": ["fallback_mode", "alert_on_fallback", "max_fallback_duration_hours"],
+      "additionalProperties": false
+    },
+
+    "buffering_config": {
+      "type": "object",
+      "description": "Controls local event buffering during connectivity outages",
+      "properties": {
+        "max_buffer_size_mb": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Maximum disk space allocated to the local event buffer"
+        },
+        "max_event_age_hours": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Events older than this are discarded from the buffer. Prevents unbounded growth during very long outages."
+        },
+        "replay_rate_per_second": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Maximum events per second to replay when connectivity restores. Throttles replay storms."
+        },
+        "replay_priority_order": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["critical_anomalies", "warning_anomalies", "inference_results", "raw_telemetry", "health_events"]
+          },
+          "description": "Order in which buffered event types are replayed. Critical anomalies should always be first."
+        },
+        "buffer_full_action": {
+          "type": "string",
+          "enum": ["drop_oldest", "drop_lowest_severity", "pause_ingestion"],
+          "description": "What to do when max_buffer_size_mb is reached. 'drop_oldest' is safest for most use cases."
+        }
+      },
+      "required": [
+        "max_buffer_size_mb",
+        "max_event_age_hours",
+        "replay_rate_per_second",
+        "replay_priority_order",
+        "buffer_full_action"
+      ],
+      "additionalProperties": false
+    },
+
+    "telemetry_config": {
+      "type": "object",
+      "description": "Controls what and how often the edge agent reports telemetry to the cloud",
+      "properties": {
+        "health_heartbeat_interval_ms": {
+          "type": "integer",
+          "minimum": 5000,
+          "description": "How frequently the edge emits an edge_health system_event, in ms"
+        },
+        "metrics_push_interval_ms": {
+          "type": "integer",
+          "minimum": 5000,
+          "description": "How frequently Prometheus metrics are pushed to the remote write endpoint"
+        },
+        "send_raw_telemetry_to_cloud": {
+          "type": "boolean",
+          "description": "If false, only inference results and system events are sent to the cloud. Raw sensor readings stay on the edge. Significantly reduces egress cost."
+        },
+        "raw_telemetry_sampling_rate": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 1.0,
+          "description": "If send_raw_telemetry_to_cloud is true, what fraction of raw events to forward. 1.0 = all, 0.1 = 10% sample. Only anomalous readings are always forwarded regardless of this setting."
+        }
+      },
+      "required": [
+        "health_heartbeat_interval_ms",
+        "metrics_push_interval_ms",
+        "send_raw_telemetry_to_cloud",
+        "raw_telemetry_sampling_rate"
+      ],
+      "additionalProperties": false
+    },
+
+    "changelog": {
+      "type": "string",
+      "description": "Human-readable description of what changed in this policy version. Stored with the document for operator auditability."
+    }
+
+  },
+  "required": [
+    "schema_version",
+    "document_type",
+    "policy_id",
+    "policy_version",
+    "previous_policy_version",
+    "tenant_id",
+    "factory_id",
+    "effective_from_ms",
+    "issued_at_ms",
+    "policy_ttl_hours",
+    "signature",
+    "mode_thresholds",
+    "cost_budget",
+    "escalation_rules",
+    "model_config",
+    "fallback_config",
+    "buffering_config",
+    "telemetry_config"
+  ],
+  "additionalProperties": false
+}

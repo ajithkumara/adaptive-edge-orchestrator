@@ -1,0 +1,283 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://adaptive-orchestrator.io/schemas/inference-result/v1",
+  "title": "InferenceResultV1",
+  "description": "Output of the edge inference engine for a single sensor reading. Contains anomaly scoring, model metadata, and optional explainability reference. Never contains raw sensor values — join on correlation_id with sensor_v1 for full context.",
+  "x-version": "1.0.0",
+  "x-introduced": "2025-01-01",
+  "x-deprecated": false,
+  "x-successor": null,
+  "x-related-schemas": [
+    "https://adaptive-orchestrator.io/schemas/sensor/v1",
+    "https://adaptive-orchestrator.io/schemas/system-event/v1"
+  ],
+  "type": "object",
+  "properties": {
+
+    "schema_version": {
+      "type": "string",
+      "const": "1.0",
+      "description": "Schema version for routing and validation"
+    },
+    "event_type": {
+      "type": "string",
+      "const": "inference_result"
+    },
+
+    "correlation_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "UUID that ties this inference result back to the originating sensor_v1 event. Use this to join records across schemas."
+    },
+    "inference_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Unique identifier for this specific inference result record"
+    },
+
+    "tenant_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9]{3,16}$"
+    },
+    "factory_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9_-]{3,32}$"
+    },
+    "sensor_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9_-]{1,64}$",
+      "description": "Must match the sensor_id in the correlated sensor_v1 event"
+    },
+
+    "timestamp_ms": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Timestamp of the originating sensor reading, epoch ms UTC. Copied from sensor_v1 for partition alignment — do not use as inference completion time."
+    },
+    "inferred_at_ms": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Timestamp when inference completed on the edge device, epoch ms UTC"
+    },
+    "processing_time_ms": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Wall-clock time taken to run inference, in milliseconds. Used for edge performance monitoring and latency SLA tracking."
+    },
+
+    "anomaly_score": {
+      "type": "number",
+      "minimum": 0.0,
+      "maximum": 1.0,
+      "description": "Normalised anomaly score from the primary model. 0.0 = fully normal, 1.0 = maximum anomaly. For Isolation Forest this is derived from the raw decision_score."
+    },
+    "raw_decision_score": {
+      "type": "number",
+      "description": "Raw, unnormalised model output before score normalisation. Retained for model debugging and threshold calibration. For Isolation Forest this is the negative average path length."
+    },
+    "is_anomaly": {
+      "type": "boolean",
+      "description": "True if anomaly_score exceeds the configured threshold at inference time. Deterministic given the score and active threshold."
+    },
+    "threshold_used": {
+      "type": "number",
+      "minimum": 0.0,
+      "maximum": 1.0,
+      "description": "The anomaly_score threshold that was active when is_anomaly was evaluated. Stored here because thresholds are policy-driven and can change over time."
+    },
+
+    "severity": {
+      "type": "string",
+      "enum": ["none", "info", "warning", "critical"],
+      "description": "Severity classification derived from anomaly_score bands defined in domain/anomaly/severity.py. 'none' means is_anomaly is false."
+    },
+    "severity_score_bands": {
+      "type": "object",
+      "description": "The score band boundaries that were active at inference time. Stored for auditability — bands are policy-driven and can change.",
+      "properties": {
+        "info_min":     { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+        "warning_min":  { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+        "critical_min": { "type": "number", "minimum": 0.0, "maximum": 1.0 }
+      },
+      "required": ["info_min", "warning_min", "critical_min"],
+      "additionalProperties": false
+    },
+
+    "detection_method": {
+      "type": "string",
+      "enum": ["isolation_forest", "rule_based", "ensemble", "cloud_model"],
+      "description": "Which detection method produced this result. 'ensemble' means both isolation_forest and rule_based were combined."
+    },
+    "rule_triggers": {
+      "type": "array",
+      "description": "List of rule-based detector rule IDs that fired for this reading. Empty array if detection_method is isolation_forest only.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "rule_id":    { "type": "string" },
+          "rule_name":  { "type": "string" },
+          "metric":     { "type": "string" },
+          "operator":   { "type": "string", "enum": ["gt", "lt", "gte", "lte", "eq", "neq"] },
+          "threshold":  { "type": "number" },
+          "actual":     { "type": "number" }
+        },
+        "required": ["rule_id", "rule_name", "metric", "operator", "threshold", "actual"],
+        "additionalProperties": false
+      }
+    },
+
+    "model": {
+      "type": "object",
+      "description": "Model version and provenance metadata. Critical for debugging detection degradation over time.",
+      "properties": {
+        "model_id": {
+          "type": "string",
+          "description": "Unique identifier for the trained model artifact"
+        },
+        "model_version": {
+          "type": "string",
+          "pattern": "^\\d+\\.\\d+\\.\\d+$",
+          "description": "Semantic version of the model artifact"
+        },
+        "model_type": {
+          "type": "string",
+          "enum": ["isolation_forest", "extended_isolation_forest", "custom"],
+          "description": "Algorithm family — used to interpret raw_decision_score correctly"
+        },
+        "trained_at_ms": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Timestamp when this model was trained, epoch ms UTC"
+        },
+        "training_samples": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Number of samples used to train this model version"
+        },
+        "feature_names": {
+          "type": "array",
+          "items": { "type": "string" },
+          "minItems": 1,
+          "description": "Ordered list of metric names used as features. Must match keys present in the correlated sensor_v1 metrics object."
+        },
+        "contamination": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 0.5,
+          "description": "Isolation Forest contamination parameter used during training"
+        }
+      },
+      "required": [
+        "model_id",
+        "model_version",
+        "model_type",
+        "trained_at_ms",
+        "feature_names"
+      ],
+      "additionalProperties": false
+    },
+
+    "explainability": {
+      "type": "object",
+      "description": "Present only when edge_mode is hybrid or cloud_optimized and SHAP computation was performed. Absence means explanation is pending or not applicable.",
+      "properties": {
+        "explanation_id": {
+          "type": "string",
+          "format": "uuid",
+          "description": "Reference ID to retrieve the full SHAP payload from cloud storage. The full payload is not embedded here to keep this event lightweight."
+        },
+        "explanation_source": {
+          "type": "string",
+          "enum": ["edge_local", "cloud_shap", "pending"],
+          "description": "Where the explanation was computed. 'pending' means cloud SHAP was requested but not yet returned."
+        },
+        "top_features": {
+          "type": "array",
+          "maxItems": 5,
+          "description": "Top contributing features by absolute SHAP value. Lightweight summary embedded here for dashboards — full SHAP values are in cloud storage.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "feature":         { "type": "string" },
+              "shap_value":      { "type": "number" },
+              "feature_value":   { "type": "number" },
+              "direction": {
+                "type": "string",
+                "enum": ["increases_anomaly", "decreases_anomaly"]
+              }
+            },
+            "required": ["feature", "shap_value", "feature_value", "direction"],
+            "additionalProperties": false
+          }
+        },
+        "explanation_latency_ms": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Time taken to compute the explanation, in milliseconds"
+        }
+      },
+      "required": ["explanation_id", "explanation_source"],
+      "additionalProperties": false
+    },
+
+    "inference_context": {
+      "type": "object",
+      "description": "Snapshot of edge resource state at the moment of inference. Used to correlate detection quality with resource pressure.",
+      "properties": {
+        "edge_mode": {
+          "type": "string",
+          "enum": ["edge_only", "hybrid", "cloud_optimized"],
+          "description": "Operational mode active when this inference ran"
+        },
+        "cpu_utilization_pct": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "memory_utilization_pct": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "connectivity_status": {
+          "type": "string",
+          "enum": ["online", "degraded", "offline"]
+        },
+        "queue_depth": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Number of events in the local buffer at inference time. Spikes here indicate the edge is under replay pressure."
+        }
+      },
+      "required": [
+        "edge_mode",
+        "cpu_utilization_pct",
+        "memory_utilization_pct",
+        "connectivity_status"
+      ],
+      "additionalProperties": false
+    }
+
+  },
+  "required": [
+    "schema_version",
+    "event_type",
+    "correlation_id",
+    "inference_id",
+    "tenant_id",
+    "factory_id",
+    "sensor_id",
+    "timestamp_ms",
+    "inferred_at_ms",
+    "processing_time_ms",
+    "anomaly_score",
+    "is_anomaly",
+    "threshold_used",
+    "severity",
+    "detection_method",
+    "rule_triggers",
+    "model",
+    "inference_context"
+  ],
+  "additionalProperties": false
+}

@@ -1,0 +1,508 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://adaptive-orchestrator.io/schemas/system-event/v1",
+  "title": "SystemEventV1",
+  "description": "Operational events emitted by the orchestrator, edge agent, and cloud services. Covers mode transitions, connectivity changes, policy updates, edge health, model deployments, and alert dispatches. These are control-plane events, not data-plane events — they describe what the system is doing, not what sensors are measuring.",
+  "x-version": "1.0.0",
+  "x-introduced": "2025-01-01",
+  "x-deprecated": false,
+  "x-successor": null,
+  "x-related-schemas": [
+    "https://adaptive-orchestrator.io/schemas/sensor/v1",
+    "https://adaptive-orchestrator.io/schemas/inference-result/v1",
+    "https://adaptive-orchestrator.io/schemas/policy/v1"
+  ],
+  "type": "object",
+
+  "properties": {
+
+    "schema_version": {
+      "type": "string",
+      "const": "1.0"
+    },
+    "event_type": {
+      "type": "string",
+      "const": "system_event"
+    },
+    "event_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Unique identifier for this system event"
+    },
+    "event_subtype": {
+      "type": "string",
+      "enum": [
+        "mode_transition",
+        "connectivity_change",
+        "policy_update",
+        "edge_health",
+        "model_deployment",
+        "alert_dispatched",
+        "buffer_flush",
+        "replay_started",
+        "replay_completed",
+        "threshold_breach",
+        "cost_budget_warning",
+        "cost_budget_exceeded",
+        "schema_violation",
+        "authentication_failure",
+        "certificate_rotation"
+      ],
+      "description": "Specific category of system event. Determines which conditional block in 'payload' is populated."
+    },
+
+    "tenant_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9]{3,16}$"
+    },
+    "factory_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9_-]{3,32}$"
+    },
+    "emitted_by": {
+      "type": "string",
+      "enum": ["edge_agent", "local_orchestrator", "control_plane", "cloud_service"],
+      "description": "Which component emitted this event"
+    },
+    "device_id": {
+      "type": "string",
+      "description": "Hardware identifier of the edge device that emitted or is the subject of this event. Null for cloud-originated events.",
+      "pattern": "^[a-zA-Z0-9_:-]{1,64}$"
+    },
+
+    "timestamp_ms": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "When the event occurred, epoch ms UTC"
+    },
+    "received_at_ms": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "When the event was received by the cloud ingestion layer, epoch ms UTC. Differs from timestamp_ms during buffered replay."
+    },
+
+    "correlation_id": {
+      "type": ["string", "null"],
+      "format": "uuid",
+      "description": "If this system event was triggered by a specific sensor reading or inference result, reference its ID here. Null for autonomous system events."
+    },
+    "causation_event_id": {
+      "type": ["string", "null"],
+      "format": "uuid",
+      "description": "If this event was caused by another system event (e.g. a mode_transition caused by a connectivity_change), reference the causal event_id here. Enables event causation tracing."
+    },
+
+    "payload": {
+      "type": "object",
+      "description": "Event-subtype-specific payload. Only the block matching event_subtype will be populated. All other blocks will be absent.",
+
+      "properties": {
+
+        "mode_transition": {
+          "type": "object",
+          "description": "Populated when event_subtype is 'mode_transition'",
+          "properties": {
+            "from_mode": {
+              "type": "string",
+              "enum": ["edge_only", "hybrid", "cloud_optimized", "initialising", "unknown"]
+            },
+            "to_mode": {
+              "type": "string",
+              "enum": ["edge_only", "hybrid", "cloud_optimized"]
+            },
+            "transition_reason": {
+              "type": "string",
+              "enum": [
+                "connectivity_restored",
+                "connectivity_lost",
+                "connectivity_degraded",
+                "cpu_pressure",
+                "cpu_pressure_relieved",
+                "cost_budget_exceeded",
+                "cost_budget_restored",
+                "critical_anomaly_detected",
+                "policy_update",
+                "manual_override",
+                "startup"
+              ],
+              "description": "Primary reason the orchestrator decided to transition. Matches transition rules defined in domain/policy/transitions.py"
+            },
+            "trigger_metric": {
+              "type": "object",
+              "description": "The specific metric value that crossed a threshold and triggered the transition",
+              "properties": {
+                "metric_name": { "type": "string" },
+                "value":       { "type": "number" },
+                "threshold":   { "type": "number" },
+                "direction":   { "type": "string", "enum": ["above", "below"] }
+              },
+              "required": ["metric_name", "value", "threshold", "direction"],
+              "additionalProperties": false
+            },
+            "transition_duration_ms": {
+              "type": "number",
+              "minimum": 0,
+              "description": "How long the transition took to complete, in milliseconds"
+            },
+            "policy_version": {
+              "type": "string",
+              "description": "Version of the orchestration policy active when this transition was evaluated"
+            }
+          },
+          "required": ["from_mode", "to_mode", "transition_reason", "policy_version"],
+          "additionalProperties": false
+        },
+
+        "connectivity_change": {
+          "type": "object",
+          "description": "Populated when event_subtype is 'connectivity_change'",
+          "properties": {
+            "from_status": {
+              "type": "string",
+              "enum": ["online", "degraded", "offline", "unknown"]
+            },
+            "to_status": {
+              "type": "string",
+              "enum": ["online", "degraded", "offline"]
+            },
+            "latency_ms": {
+              "type": ["number", "null"],
+              "minimum": 0,
+              "description": "Measured round-trip latency at time of change. Null if offline (no measurement possible)."
+            },
+            "packet_loss_pct": {
+              "type": ["number", "null"],
+              "minimum": 0,
+              "maximum": 100
+            },
+            "outage_duration_ms": {
+              "type": ["integer", "null"],
+              "minimum": 0,
+              "description": "If transitioning back to online/degraded, duration of the preceding offline period in ms. Null if not recovering from outage."
+            },
+            "buffered_events_count": {
+              "type": ["integer", "null"],
+              "minimum": 0,
+              "description": "Number of events in local buffer at the time connectivity was restored. Indicates replay storm size."
+            }
+          },
+          "required": ["from_status", "to_status"],
+          "additionalProperties": false
+        },
+
+        "policy_update": {
+          "type": "object",
+          "description": "Populated when event_subtype is 'policy_update'",
+          "properties": {
+            "previous_policy_version": {
+              "type": ["string", "null"],
+              "description": "Null on first policy load after startup"
+            },
+            "new_policy_version": {
+              "type": "string"
+            },
+            "policy_id": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "update_source": {
+              "type": "string",
+              "enum": ["control_plane_push", "local_cache", "default_fallback"],
+              "description": "'local_cache' means the edge loaded a previously stored policy on startup. 'default_fallback' means no policy was available and hardcoded defaults were applied."
+            },
+            "changed_sections": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": ["mode_thresholds", "cost_budget", "escalation_rules", "model_config", "alert_routing"]
+              },
+              "description": "Which sections of the policy changed. Empty array means full replacement."
+            },
+            "applied_successfully": {
+              "type": "boolean"
+            },
+            "apply_error": {
+              "type": ["string", "null"],
+              "description": "Error message if applied_successfully is false"
+            }
+          },
+          "required": [
+            "previous_policy_version",
+            "new_policy_version",
+            "policy_id",
+            "update_source",
+            "applied_successfully"
+          ],
+          "additionalProperties": false
+        },
+
+        "edge_health": {
+          "type": "object",
+          "description": "Populated when event_subtype is 'edge_health'. Emitted on a scheduled cadence (e.g. every 60s) as a heartbeat from the edge agent.",
+          "properties": {
+            "cpu_utilization_pct":    { "type": "number", "minimum": 0, "maximum": 100 },
+            "memory_utilization_pct": { "type": "number", "minimum": 0, "maximum": 100 },
+            "disk_utilization_pct":   { "type": "number", "minimum": 0, "maximum": 100 },
+            "buffer_depth": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Number of events currently in local buffer"
+            },
+            "buffer_size_bytes": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "inference_queue_depth": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Events waiting for inference. Non-zero indicates inference is falling behind ingestion rate."
+            },
+            "uptime_seconds": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Edge agent uptime since last restart"
+            },
+            "events_processed_last_60s": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "anomalies_detected_last_60s": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "inference_avg_latency_ms": {
+              "type": "number",
+              "minimum": 0
+            },
+            "model_version_active": {
+              "type": "string",
+              "description": "Currently loaded model version"
+            },
+            "policy_version_active": {
+              "type": "string",
+              "description": "Currently loaded policy version"
+            },
+            "firmware_version": {
+              "type": "string",
+              "pattern": "^\\d+\\.\\d+\\.\\d+$"
+            }
+          },
+          "required": [
+            "cpu_utilization_pct",
+            "memory_utilization_pct",
+            "disk_utilization_pct",
+            "buffer_depth",
+            "uptime_seconds",
+            "events_processed_last_60s",
+            "model_version_active",
+            "policy_version_active"
+          ],
+          "additionalProperties": false
+        },
+
+        "model_deployment": {
+          "type": "object",
+          "description": "Populated when event_subtype is 'model_deployment'",
+          "properties": {
+            "model_id":       { "type": "string" },
+            "model_version":  { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$" },
+            "previous_model_version": { "type": ["string", "null"] },
+            "deployment_action": {
+              "type": "string",
+              "enum": ["deployed", "rolled_back", "validation_failed", "download_failed"]
+            },
+            "deployment_duration_ms": { "type": "number", "minimum": 0 },
+            "model_size_bytes":       { "type": "integer", "minimum": 0 },
+            "validation_metrics": {
+              "type": "object",
+              "description": "Smoke-test results run immediately after deployment",
+              "properties": {
+                "test_samples_run":   { "type": "integer" },
+                "inference_time_ms":  { "type": "number" },
+                "memory_delta_mb":    { "type": "number" }
+              },
+              "additionalProperties": true
+            },
+            "failure_reason": {
+              "type": ["string", "null"]
+            }
+          },
+          "required": [
+            "model_id",
+            "model_version",
+            "previous_model_version",
+            "deployment_action"
+          ],
+          "additionalProperties": false
+        },
+
+        "alert_dispatched": {
+          "type": "object",
+          "description": "Populated when event_subtype is 'alert_dispatched'. Records that an anomaly alert was sent to an external system.",
+          "properties": {
+            "alert_id": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "source_inference_id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "References inference_result_v1.inference_id that triggered this alert"
+            },
+            "severity":        { "type": "string", "enum": ["info", "warning", "critical"] },
+            "channel":         { "type": "string", "enum": ["email", "webhook", "pagerduty", "slack", "sms", "cmms"] },
+            "recipient":       { "type": "string", "description": "Anonymised recipient identifier" },
+            "dispatch_status": { "type": "string", "enum": ["sent", "failed", "suppressed_by_cooldown", "suppressed_by_policy"] },
+            "failure_reason":  { "type": ["string", "null"] },
+            "anomaly_score":   { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+            "suppressed_duplicate_count": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Number of similar alerts suppressed by cooldown policy before this one was dispatched"
+            }
+          },
+          "required": [
+            "alert_id",
+            "source_inference_id",
+            "severity",
+            "channel",
+            "dispatch_status"
+          ],
+          "additionalProperties": false
+        },
+
+        "buffer_flush": {
+          "type": "object",
+          "description": "Populated when event_subtype is 'buffer_flush' or 'replay_started' or 'replay_completed'",
+          "properties": {
+            "flush_trigger": {
+              "type": "string",
+              "enum": ["connectivity_restored", "buffer_full", "scheduled", "manual"]
+            },
+            "events_flushed":   { "type": "integer", "minimum": 0 },
+            "events_remaining": { "type": "integer", "minimum": 0 },
+            "oldest_event_age_ms": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Age of the oldest buffered event in ms. Large values indicate long outages."
+            },
+            "flush_rate_per_second": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Controlled replay rate to avoid overwhelming downstream consumers"
+            },
+            "flush_duration_ms": {
+              "type": ["number", "null"],
+              "minimum": 0,
+              "description": "Total duration of flush operation. Null if flush is still in progress."
+            },
+            "events_dropped": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Events discarded due to TTL expiry or buffer overflow during flush. Non-zero is a data loss event."
+            }
+          },
+          "required": [
+            "flush_trigger",
+            "events_flushed",
+            "events_remaining",
+            "oldest_event_age_ms"
+          ],
+          "additionalProperties": false
+        },
+
+        "cost_budget": {
+          "type": "object",
+          "description": "Populated when event_subtype is 'cost_budget_warning' or 'cost_budget_exceeded'",
+          "properties": {
+            "budget_period": {
+              "type": "string",
+              "enum": ["hourly", "daily", "monthly"]
+            },
+            "budget_limit_usd":    { "type": "number", "minimum": 0 },
+            "budget_consumed_usd": { "type": "number", "minimum": 0 },
+            "budget_consumed_pct": { "type": "number", "minimum": 0, "maximum": 200 },
+            "primary_cost_driver": {
+              "type": "string",
+              "enum": ["cloud_inference", "shap_calls", "storage_writes", "data_egress"],
+              "description": "The single largest cost category in the current period"
+            },
+            "projected_period_cost_usd": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Projected total spend for the current period based on current rate"
+            },
+            "action_taken": {
+              "type": "string",
+              "enum": ["none", "reduced_shap_calls", "disabled_cloud_inference", "throttled_egress"],
+              "description": "Automatic cost-control action taken by the orchestrator in response"
+            }
+          },
+          "required": [
+            "budget_period",
+            "budget_limit_usd",
+            "budget_consumed_usd",
+            "budget_consumed_pct",
+            "action_taken"
+          ],
+          "additionalProperties": false
+        },
+
+        "schema_violation": {
+          "type": "object",
+          "description": "Populated when event_subtype is 'schema_violation'. Emitted when an incoming event fails validation.",
+          "properties": {
+            "violated_schema_id": {
+              "type": "string",
+              "description": "The $id of the schema that was violated"
+            },
+            "violation_count": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Number of validation errors in the rejected event"
+            },
+            "error_paths": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "JSON pointer paths to fields that failed validation. Max 10 paths to avoid payload bloat."
+            },
+            "source_component": {
+              "type": "string",
+              "enum": ["edge_ingestion", "cloud_streaming", "schema_registry"]
+            },
+            "raw_event_preview": {
+              "type": ["string", "null"],
+              "maxLength": 512,
+              "description": "First 512 characters of the rejected event for debugging. Truncated. Must be sanitised before logging — never include credentials or PII."
+            }
+          },
+          "required": [
+            "violated_schema_id",
+            "violation_count",
+            "error_paths",
+            "source_component"
+          ],
+          "additionalProperties": false
+        }
+
+      },
+      "additionalProperties": false
+    }
+
+  },
+  "required": [
+    "schema_version",
+    "event_type",
+    "event_id",
+    "event_subtype",
+    "tenant_id",
+    "factory_id",
+    "emitted_by",
+    "timestamp_ms",
+    "received_at_ms",
+    "correlation_id",
+    "causation_event_id",
+    "payload"
+  ],
+  "additionalProperties": false
+}

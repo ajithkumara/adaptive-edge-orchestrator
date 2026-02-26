@@ -1,0 +1,7 @@
+# Commands
+
+
+# connects to ubuntu vm
+ubuntu2204
+
+

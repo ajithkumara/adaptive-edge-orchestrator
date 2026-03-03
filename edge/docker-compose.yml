@@ -1,0 +1,58 @@
+networks:
+  edge_cloud_net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16
+
+services:
+  edge_node:
+    image: python:3.10-slim
+    container_name: edge_node
+    command: tail -f /dev/null
+    networks:
+      edge_cloud_net:
+        ipv4_address: 172.28.0.10
+    cap_add:
+      - NET_ADMIN
+    volumes:
+      - ./:/app
+      - ./logs:/logs
+    working_dir: /app
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 4g
+
+  cloud_node:
+    image: python:3.10-slim
+    container_name: cloud_node
+    command: tail -f /dev/null
+    networks:
+      edge_cloud_net:
+        ipv4_address: 172.28.0.20
+    volumes:
+      - ./:/app
+      - ./logs:/logs
+    working_dir: /app
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 6g
+
+  nats_broker:
+    image: nats:latest
+    container_name: nats_broker
+    command: [ "-js", "-m", "8222" ]
+    ports:
+      - "4222:4222"
+      - "8222:8222"
+    networks:
+      edge_cloud_net:
+        ipv4_address: 172.28.0.30
+    deploy:
+      resources:
+        limits:
+          memory: 512m

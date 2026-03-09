@@ -5,3 +5,18 @@
 ubuntu2204
 
 
+echo 'export PROJECT="/mnt/c/Users/Laptop/Documents/workspace/adaptive-edge-orchestrator"' >> ~/.bashrc
+source ~/.bashrc
+
+# Test it
+echo $PROJECT
+ls $PROJECT
+
+
+
+docker exec edge_node apt-get update -qq && \
+docker exec edge_node apt-get install -y -qq iputils-ping iproute2 stress-ng && \
+docker exec edge_node pip install psutil -q && \
+echo "--- Verify ---" && \
+docker exec edge_node ping -c 2 172.28.0.20 | grep received && echo "ping OK" && \
+docker exec edge_node python3 -c "import psutil; print('psutil OK')"

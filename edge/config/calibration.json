@@ -1,0 +1,36 @@
+{
+  "calibrated_at": "2026-03-09T00:49:21.001097+00:00",
+  "environment_tag": "docker-wsl2-dev",
+  "cloud_host": "172.28.0.20",
+  "profiling_duration_s": 300,
+  "sample_count": 301,
+  "reachable_count": 301,
+  "statistics": {
+    "rtt_p50_ms": 0.122,
+    "rtt_p95_ms": 0.289,
+    "rtt_p99_ms": 0.562,
+    "rtt_max_ms": 2.33,
+    "cpu_p50_pct": 0.0,
+    "cpu_p95_pct": 7.0,
+    "cpu_p99_pct": 8.5,
+    "cpu_max_pct": 10.4,
+    "latency_multiplier": 2.0,
+    "cpu_multiplier": 2.5,
+    "latency_floor_ms": 50.0,
+    "cpu_floor_pct": 40.0,
+    "latency_floor_active": true,
+    "cpu_floor_active": true,
+    "latency_threshold_ms": 50.0,
+    "cpu_threshold_pct": 40.0
+  },
+  "thresholds": {
+    "latency_ms": 50.0,
+    "cpu_pct": 40.0,
+    "hysteresis": 3
+  },
+  "algorithm": "latency = max(50.0ms, P95_RTT x 2.0) | cpu = max(40.0%, P95_CPU x 2.5)",
+  "notes": {
+    "latency_floor_reason": "Docker LAN baseline P95 RTT is <1ms. Raw multiplier would produce sub-millisecond thresholds triggering on any network noise. 50ms floor ensures only real WAN degradation (>50ms) triggers a switch.",
+    "cpu_floor_reason": "R1 stress test (2026-03-04) found psutil reads system-wide CPU across 8 host cores. Single-core container stress produces ~12% system-wide. 80% hardcoded threshold was unreachable. 40% floor is above normal noise (P95=5.3%) and reachable under real workload pressure."
+  }
+}

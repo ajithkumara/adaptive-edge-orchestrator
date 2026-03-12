@@ -4,6 +4,14 @@
 # connects to ubuntu vm
 ubuntu2204
 
+#remove old docker containers
+cd adaptive_orchestrator
+docker compose down --remove-orphans --volumes
+
+docker compose up -d
+
+
+
 
 echo 'export PROJECT="/mnt/c/Users/Laptop/Documents/workspace/adaptive-edge-orchestrator"' >> ~/.bashrc
 source ~/.bashrc

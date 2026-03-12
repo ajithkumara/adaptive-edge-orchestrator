@@ -1,5 +1,4 @@
 version: '3.8'
-
 services:
   edge_node:
     image: python:3.10-slim
@@ -13,26 +12,35 @@ services:
       - /mnt/c/Users/Laptop/Documents/workspace/adaptive-edge-orchestrator/edge:/app/edge
       - /mnt/c/Users/Laptop/Documents/workspace/adaptive-edge-orchestrator/logs:/logs
       - /mnt/c/Users/Laptop/Documents/workspace/adaptive-edge-orchestrator/config:/app/config
+      - /mnt/c/Users/Laptop/Documents/workspace/adaptive-edge-orchestrator/data:/app/data
+      - /mnt/c/Users/Laptop/Documents/workspace/adaptive-edge-orchestrator/scripts:/app/scripts
     deploy:
       resources:
         limits:
           cpus: '1.0'
           memory: 4G
-    command: sleep infinity
-
+    command: >
+      bash -c "pip install numpy scipy scikit-learn nats-py psutil requests -q &&
+               echo '[edge_node] packages ready' &&
+               sleep infinity"
   cloud_node:
     image: python:3.10-slim
     container_name: cloud_node
     networks:
       iot_net:
         ipv4_address: 172.28.0.20
+    volumes:
+      - /mnt/c/Users/Laptop/Documents/workspace/adaptive-edge-orchestrator/logs:/logs
+      - /mnt/c/Users/Laptop/Documents/workspace/adaptive-edge-orchestrator/config:/app/config
     deploy:
       resources:
         limits:
           cpus: '2.0'
           memory: 6G
-    command: sleep infinity
-
+    command: >
+      bash -c "pip install numpy scipy scikit-learn nats-py psutil -q &&
+               echo '[cloud_node] packages ready' &&
+               sleep infinity"
   nats_broker:
     image: nats:latest
     container_name: nats_broker
@@ -47,7 +55,6 @@ services:
         limits:
           memory: 512M
     command: [ "--jetstream" ]
-
 networks:
   iot_net:
     driver: bridge

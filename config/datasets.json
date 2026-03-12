@@ -1,0 +1,79 @@
+{
+  "cwru": {
+    "normal_0hp.mat": {
+      "url": "https://engineering.case.edu/sites/default/files/97.mat",
+      "sha256": "16bf48babcf1",
+      "bytes": 3903344
+    },
+    "ball_0hp.mat": {
+      "url": "https://engineering.case.edu/sites/default/files/118.mat",
+      "sha256": "b00628f8dd8d",
+      "bytes": 2942112
+    },
+    "inner_race_0hp.mat": {
+      "url": "https://engineering.case.edu/sites/default/files/105.mat",
+      "sha256": "f80b0ea04fd0",
+      "bytes": 2910768
+    },
+    "outer_race_0hp.mat": {
+      "url": "https://engineering.case.edu/sites/default/files/130.mat",
+      "sha256": "35a095307d09",
+      "bytes": 2928192
+    },
+    "normal_1hp.mat": {
+      "url": "https://engineering.case.edu/sites/default/files/98.mat",
+      "sha256": "37e6612c05e6",
+      "bytes": 7742720
+    },
+    "ball_1hp.mat": {
+      "url": "https://engineering.case.edu/sites/default/files/119.mat",
+      "sha256": "bc72d9df7668",
+      "bytes": 2914248
+    },
+    "inner_race_1hp.mat": {
+      "url": "https://engineering.case.edu/sites/default/files/106.mat",
+      "sha256": "e5cec7cdd138",
+      "bytes": 2928192
+    },
+    "outer_race_1hp.mat": {
+      "url": "https://engineering.case.edu/sites/default/files/131.mat",
+      "sha256": "7883f7b83bea",
+      "bytes": 2938632
+    }
+  },
+  "skab": {
+    "skab_valve1_0.csv": {
+      "url": "https://raw.githubusercontent.com/waico/SKAB/master/data/valve1/0.csv",
+      "sha256": "16af3f71313a",
+      "bytes": 110346
+    },
+    "skab_valve1_1.csv": {
+      "url": "https://raw.githubusercontent.com/waico/SKAB/master/data/valve1/1.csv",
+      "sha256": "fe4493bf805b",
+      "bytes": 110330
+    },
+    "skab_valve1_2.csv": {
+      "url": "https://raw.githubusercontent.com/waico/SKAB/master/data/valve1/2.csv",
+      "sha256": "904924134692",
+      "bytes": 103507
+    },
+    "skab_valve1_3.csv": {
+      "url": "https://raw.githubusercontent.com/waico/SKAB/master/data/valve1/3.csv",
+      "sha256": "cb6afea108ed",
+      "bytes": 110534
+    },
+    "skab_valve1_4.csv": {
+      "url": "https://raw.githubusercontent.com/waico/SKAB/master/data/valve1/4.csv",
+      "sha256": "983aed9dc099",
+      "bytes": 105634
+    }
+  },
+  "random_state": 42,
+  "cwru_fault_types": [
+    "normal",
+    "ball",
+    "inner_race",
+    "outer_race"
+  ],
+  "downloaded_at": "2026-03-11T04:18:03.695533+00:00"
+}

@@ -28,3 +28,9 @@ docker exec edge_node pip install psutil -q && \
 echo "--- Verify ---" && \
 docker exec edge_node ping -c 2 172.28.0.20 | grep received && echo "ping OK" && \
 docker exec edge_node python3 -c "import psutil; print('psutil OK')"
+
+# check in codes
+ git status
+ git add .
+ git commit -m "update"
+ git push origin main
